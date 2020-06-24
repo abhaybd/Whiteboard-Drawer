@@ -159,17 +159,27 @@ void setup() {
 
 #define numParts 5
 void loop() {
+    // wait for data to become available
+    while (Serial.available() == 0) {
+        delay(10);
+    }
+
+    // read command from serial
     char command[20];
-    size_t len = Serial.readBytesUntil('\n', command, (sizeof command)-1);
+    size_t len = Serial.readBytesUntil('\n', command, (sizeof command) - 1);
     command[len] = '\0'; // make sure string is null terminated
     Serial.print("Recieved command: ");
     Serial.println(command);
+
+    // Tokenize into space delimited parts
     char* parts[numParts] = {};
     char* part = strtok(command, " \n");
     for (size_t i = 0; i < numParts && part != nullptr; i++) {
         parts[i] = part;
         part = strtok(nullptr, " \n");
     }
+
+    // Execute g-code command
     char* type = parts[0];
     if (type == nullptr) {
         Serial.println("Invalid command!");
