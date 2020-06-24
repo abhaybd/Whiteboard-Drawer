@@ -4,7 +4,7 @@
 #include <Adafruit_MotorShield.h>
 #include <AccelStepper.h>
 
-typedef uint16_t coord_t;
+typedef float coord_t;
 
 const float SPOOL_RAD = 5; // in mm
 const int TICKS_PER_ROT = 200;
@@ -155,6 +155,10 @@ void move(coord_t x, coord_t y, coord_t vel) {
     setPosition(currX + x, currY + y, vel);
 }
 
+void setToolUp(bool up) {
+    // TODO: Implement
+}
+
 void setup() {
     Serial.begin(9600);
     shield.begin();
@@ -164,6 +168,10 @@ void setup() {
     right.setPinsInverted(false, false, false);
 }
 
+coord_t targetX = 0;
+coord_t targetY = 0;
+coord_t targetZ = 0;
+
 #define numParts 5
 void loop() {
     // wait for data to become available
@@ -172,7 +180,7 @@ void loop() {
     }
 
     // read command from serial
-    char command[20];
+    char command[20] = {};
     size_t len = Serial.readBytesUntil('\n', command, (sizeof command) - 1);
     command[len] = '\0'; // make sure string is null terminated
     Serial.print("Recieved command: ");
@@ -190,16 +198,33 @@ void loop() {
     char* type = parts[0];
     if (type == nullptr) {
         Serial.println("Invalid command!");
-    } else if (strcmp(type, "G1") == 0) {
-        if (parts[1] == nullptr || parts[2] == nullptr) {
-            Serial.println("Invalid command!");
-            return;
-        }
-        coord_t x = strtol(&parts[1][1], nullptr, 10);
-        coord_t y = strtol(&parts[2][1], nullptr, 10);
-        setPosition(x, y, DEF_VEL);
-    } else if (strcmp(type, "G28") == 0) {
+    } else if (strcmp(type, "G28") == 0) { // If it's a home command
+        targetX = HOME_X;
+        targetY = HOME_Y;
+        targetZ = 0;
+        setToolUp(true);
         zero();
+    } else if (type[0] == 'G') {
+        for (int i = 1; i <= 3 && parts[i] != nullptr; i++) {
+            if (parts[i][0] == 'X') {
+                targetX = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
+            } else if (parts[i][0] == 'Y') {
+                targetY = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
+            } else if (parts[i][0] == 'Z') {
+                targetZ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
+            }
+        }
+        setToolUp(targetZ >= 0);
+        long code = strtol(&type[1], nullptr, 10);
+        if (code == 0 || code == 1) {
+            setPosition(targetX, targetY, DEF_VEL);
+        } else if (code == 2) {
+            // CW circular interp
+        } else if (code == 3) {
+            // CCW circular interp
+        } else {
+            Serial.println("Unsupported g-code!");
+        }
     } else {
         Serial.println("Invalid command!");
     }
