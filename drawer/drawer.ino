@@ -100,17 +100,23 @@ void setPosition(coord_t x, coord_t y, coord_t vel) {
         // create a velocity vector pointing in the desired direction
         float velX = x - currX;
         float velY = y - currY;
-        float mag = sqrt(sq(velX) + sq(velY));
+        float mag = hypot(velX, velY);
         velX *= vel / mag;
         velY *= vel / mag;
 
-        // the ROC of the spool is the dot product of the velocity vector with the vector from the spool to the anchor
-        coord_t fromLX = x - OFFSET_X - LEFT_X;
-        coord_t fromLY = y + OFFSET_Y - LEFT_Y;
+        // the ROC of the spool is the dot product of the velocity vector with the normalized vector from the spool to the anchor
+        float fromLX = x - OFFSET_X - LEFT_X;
+        float fromLY = y + OFFSET_Y - LEFT_Y;
+        float fromLMag = hypot(fromLX, fromLY);
+        fromLX /= fromLMag;
+        fromLY /= fromLMag;
         float leftVel = velX * fromLX + velY * fromLY;
 
-        coord_t fromRX = x + OFFSET_X - RIGHT_X;
-        coord_t fromRY = y + OFFSET_Y - RIGHT_Y;
+        float fromRX = x + OFFSET_X - RIGHT_X;
+        float fromRY = y + OFFSET_Y - RIGHT_Y;
+        float fromRMag = hypot(fromRX, fromRY);
+        fromRX /= fromRMag;
+        fromRY /= fromRMag;
         float rightVel = velX * fromRX + velY * fromRY;
 
         Serial.print("Pos=(" + String(currX) + "," + currY + "), Target=(" + x + "," + y + "), Speed=" + vel + ", ");
