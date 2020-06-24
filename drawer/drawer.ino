@@ -157,26 +157,31 @@ void setup() {
     right.setPinsInverted(false, false, false);
 }
 
+#define numParts 5
 void loop() {
-    String command = Serial.readStringUntil("\n");
-    String parts[5] = {};
-    String part = strtok(command.c_str(), " \n");
-    for (int i = 0; i < 5 && part != nullptr; i++) {
+    char command[20];
+    size_t len = Serial.readBytesUntil('\n', command, (sizeof command)-1);
+    command[len] = '\0'; // make sure string is null terminated
+    Serial.print("Recieved command: ");
+    Serial.println(command);
+    char* parts[numParts] = {};
+    char* part = strtok(command, " \n");
+    for (size_t i = 0; i < numParts && part != nullptr; i++) {
         parts[i] = part;
         part = strtok(nullptr, " \n");
     }
-    String type = parts[0];
+    char* type = parts[0];
     if (type == nullptr) {
         Serial.println("Invalid command!");
-    } else if (type == "G1") {
+    } else if (strcmp(type, "G1") == 0) {
         if (parts[1] == nullptr || parts[2] == nullptr) {
             Serial.println("Invalid command!");
             return;
         }
-        coord_t x = parts[1].substring(1).toInt();
-        coord_t y = parts[2].substring(1).toInt();
+        coord_t x = strtol(&parts[1][1], nullptr, 10);
+        coord_t y = strtol(&parts[2][1], nullptr, 10);
         setPosition(x, y, DEF_VEL);
-    } else if (type == "G28") {
+    } else if (strcmp(type, "G28") == 0) {
         zero();
     } else {
         Serial.println("Invalid command!");
