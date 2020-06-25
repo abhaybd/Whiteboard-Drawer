@@ -44,8 +44,8 @@ AccelStepper right([]() {
     Calculates the target position of each stepper, in units of steps. x and y are in mm.
 */
 void calculateTargetSteps(coord_t x, coord_t y, int& l1, int& l2) {
-    l1 = static_cast<int>(sqrt(sq(x - OFFSET_X - LEFT_X) + sq(y + OFFSET_Y - LEFT_Y)) * TICKS_PER_MM);
-    l2 = static_cast<int>(sqrt(sq(x + OFFSET_X - RIGHT_X) + sq(y + OFFSET_Y - RIGHT_Y)) * TICKS_PER_MM);
+    l1 = static_cast<int>(hypot(x - OFFSET_X - LEFT_X, y + OFFSET_Y - LEFT_Y) * TICKS_PER_MM);
+    l2 = static_cast<int>(hypot(x + OFFSET_X - RIGHT_X, y + OFFSET_Y - RIGHT_Y) * TICKS_PER_MM);
 }
 
 /**
@@ -64,12 +64,12 @@ void getPosition(coord_t& x, coord_t& y) {
 
     float fy = LEFT_Y - sqrt(sq(l1) - sq(fx));
 
-    x = (coord_t)fx + OFFSET_X;
-    y = (coord_t)fy - OFFSET_Y;
+    x = static_cast<coord_t>(fx + OFFSET_X);
+    y = static_cast<coord_t>(fy - OFFSET_Y);
 }
 
 void zero() {
-    int stepsToMove = static_cast<int>(TICKS_PER_MM * sqrt(sq(RIGHT_X - LEFT_X) + sq(RIGHT_Y)));
+    int stepsToMove = static_cast<int>(TICKS_PER_MM * hypot(RIGHT_X - LEFT_X, RIGHT_Y));
     left.move(-stepsToMove);
     left.setSpeed(DEF_VEL);
     left.runSpeedToPosition();
@@ -110,7 +110,7 @@ void getTargetVel(coord_t currX, coord_t currY, coord_t x, coord_t y, float curv
         float rad = 1 / curvature;
         coord_t midX = (currX + x) / 2;
         coord_t midY = (currY + y) / 2;
-        float d = sqrt(sq(rad) - (sq(x-currX) + sq(y-currY)) / 4);
+        float d = sqrt(sq(rad) - (sq(x - currX) + sq(y - currY)) / 4);
 
         float arcX, arcY;
         if (clockwise) {
