@@ -97,7 +97,43 @@ float getSpoolVel(float velX, float velY, float fromSpoolX, float fromSpoolY) {
     return velX * fromSpoolX + velY * fromSpoolY;
 }
 
-void setPosition(coord_t x, coord_t y, coord_t vel) {
+void getTargetVel(coord_t currX, coord_t currY, coord_t x, coord_t y, float curvature, bool clockwise, float& velX, float& velY) {
+    float toTargetX = x - currX;
+    float toTargetY = y - currY;
+    float mag = hypot(toTargetX, toTargetY);
+    toTargetX /= mag;
+    toTargetY /= mag;
+    if (curvature == 0) {
+        velX = toTargetX;
+        velY = toTargetY;
+    } else {
+        float rad = 1 / curvature;
+        coord_t midX = (currX + x) / 2;
+        coord_t midY = (currY + y) / 2;
+        float d = sqrt(sq(rad) - (sq(x-currX) + sq(y-currY)) / 4);
+
+        float arcX, arcY;
+        if (clockwise) {
+            arcX = midX + toTargetY * d;
+            arcY = midY - toTargetX * d;
+        } else {
+            arcX = midX - toTargetY * d;
+            arcY = midY + toTargetX * d;
+        }
+
+        float toCurrX = (currX - arcX) / rad;
+        float toCurrY = (currY - arcY) / rad;
+        if (clockwise) {
+            velX = toCurrY;
+            velY = -toCurrX;
+        } else {
+            velX = -toCurrY;
+            velY = toCurrX;
+        }
+    }
+}
+
+void setPosition(coord_t x, coord_t y, coord_t vel, float curvature, bool clockwise) {
     coord_t currX, currY;
     int lTarget, rTarget;
     calculateTargetSteps(x, y, lTarget, rTarget);
@@ -105,11 +141,10 @@ void setPosition(coord_t x, coord_t y, coord_t vel) {
     while (!done) {
         getPosition(currX, currY);
         // create a velocity vector pointing in the desired direction
-        float velX = x - currX;
-        float velY = y - currY;
-        float mag = hypot(velX, velY);
-        velX *= vel / mag;
-        velY *= vel / mag;
+        float velX = 0, velY = 0;
+        getTargetVel(currX, currY, x, y, curvature, clockwise, velX, velY);
+        velX *= vel;
+        velY *= vel;
 
         // the ROC of the spool is the dot product of the velocity vector with the normalized vector from the spool to the anchor
         float fromLX = x - OFFSET_X - LEFT_X;
@@ -126,8 +161,8 @@ void setPosition(coord_t x, coord_t y, coord_t vel) {
         Serial.print(", Right=");
         Serial.println(rightVel);
 
-        bool lDone = left.currentPosition() == lTarget;
-        bool rDone = right.currentPosition() == rTarget;
+        bool lDone = abs(left.currentPosition() - lTarget) <= 5;
+        bool rDone = abs(right.currentPosition() - rTarget) <= 5;
 
         if (lDone) {
             left.stop();
@@ -149,12 +184,6 @@ void setPosition(coord_t x, coord_t y, coord_t vel) {
     right.stop();
 }
 
-void move(coord_t x, coord_t y, coord_t vel) {
-    coord_t currX, currY;
-    getPosition(currX, currY);
-    setPosition(currX + x, currY + y, vel);
-}
-
 void setToolUp(bool up) {
     // TODO: Implement
 }
@@ -172,7 +201,7 @@ coord_t targetX = 0;
 coord_t targetY = 0;
 coord_t targetZ = 0;
 
-#define numParts 5
+#define numParts 6
 void loop() {
     // wait for data to become available
     while (Serial.available() == 0) {
@@ -205,23 +234,32 @@ void loop() {
         setToolUp(true);
         zero();
     } else if (type[0] == 'G') {
-        for (int i = 1; i <= 3 && parts[i] != nullptr; i++) {
+        coord_t arcI = 0;
+        coord_t arcJ = 0;
+        for (int i = 1; i < numParts && parts[i] != nullptr; i++) {
             if (parts[i][0] == 'X') {
                 targetX = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             } else if (parts[i][0] == 'Y') {
                 targetY = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             } else if (parts[i][0] == 'Z') {
                 targetZ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
+            } else if (parts[i][0] == 'I') {
+                arcI = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
+            } else if (parts[i][1] == 'J') {
+                arcJ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             }
         }
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
         if (code == 0 || code == 1) {
-            setPosition(targetX, targetY, DEF_VEL);
-        } else if (code == 2) {
-            // CW circular interp
-        } else if (code == 3) {
-            // CCW circular interp
+            setPosition(targetX, targetY, DEF_VEL, 0, false);
+        } else if (code == 2 || code == 3) {
+            if (arcI != 0 || arcJ != 0) {
+                float rad = hypot(arcI, arcJ);
+                setPosition(targetX, targetY, DEF_VEL, 1 / rad, code == 2);
+            } else {
+                Serial.println("Full circle unsupported!");
+            }
         } else {
             Serial.println("Unsupported g-code!");
         }
