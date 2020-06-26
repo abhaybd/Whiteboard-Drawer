@@ -29,10 +29,12 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
     public boolean sendCommand(String command) throws IOException {
         String response;
         do {
+            System.out.println(">>> " + command);
             out.println(command);
             out.flush();
             do {
                 response = in.readLine();
+                System.out.println("<<< " + response);
             } while (response.startsWith("//")); // skip past debug info
         } while (response.equals("rs"));
 
