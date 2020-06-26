@@ -155,7 +155,7 @@ void setPosition(coord_t x, coord_t y, coord_t vel, float curvature, bool clockw
         float fromRY = y + OFFSET_Y - RIGHT_Y;
         float rightVel = getSpoolVel(velX, velY, fromRX, fromRY);
 
-        Serial.print("Pos=(" + String(currX) + "," + currY + "), Target=(" + x + "," + y + "), Speed=" + vel + ", ");
+        Serial.print("// Pos=(" + String(currX) + "," + currY + "), Target=(" + x + "," + y + "), Speed=" + vel + ", ");
         Serial.print("Speeds: Left=");
         Serial.print(leftVel);
         Serial.print(", Right=");
@@ -212,7 +212,7 @@ void loop() {
     char command[20] = {};
     size_t len = Serial.readBytesUntil('\n', command, (sizeof command) - 1);
     command[len] = '\0'; // make sure string is null terminated
-    Serial.print("Recieved command: ");
+    Serial.print("// Recieved command: ");
     Serial.println(command);
 
     // Tokenize into space delimited parts
@@ -226,7 +226,7 @@ void loop() {
     // Execute g-code command
     char* type = parts[0];
     if (type == nullptr) {
-        Serial.println("Invalid command!");
+        Serial.println("// Invalid command! Failing silently...");
     } else if (strcmp(type, "G28") == 0) { // If it's a home command
         targetX = HOME_X;
         targetY = HOME_Y;
@@ -258,12 +258,17 @@ void loop() {
                 float rad = hypot(arcI, arcJ);
                 setPosition(targetX, targetY, DEF_VEL, 1 / rad, code == 2);
             } else {
-                Serial.println("Full circle unsupported!");
+                Serial.println("// Invalid G2/G3 command!");
+                Serial.println("!!");
+                return;
             }
         } else {
-            Serial.println("Unsupported g-code!");
+            Serial.print("// Unsupported g-code: G");
+            Serial.println(code);
         }
     } else {
-        Serial.println("Invalid command!");
+        Serial.println("// Invalid command! Failing silently...");
     }
+
+    Serial.println("ok");
 }
