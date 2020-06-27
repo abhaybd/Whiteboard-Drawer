@@ -12,6 +12,19 @@ import purejavacomm.SerialPort;
 
 public class WhiteboardDrawer implements AutoCloseable, Closeable {
 
+    public static void main(String[] args) {
+        try {
+            System.out.print("Connecting...");
+            WhiteboardDrawer wb = new WhiteboardDrawer("COM3");
+            System.out.println("Done!");
+            System.out.println("Printing...");
+            wb.drawFromFile(new File("C:/Users/abdes/Downloads/output_0001.gcode"));
+            System.out.println("Done printing!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private final SerialPort port;
     private final BufferedReader in;
     private final PrintStream out;
@@ -80,7 +93,10 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
                 return "";
 
             default:
-                return command.replaceAll("F[.\\d\\-]+", "").trim();
+                return command
+                        .replaceAll("F[.\\d\\-]+", "") // remove F arg
+                        .replaceAll("0{2,}(?=\\s|$)", "0") // Remove trailing zeros
+                        .trim();
         }
     }
 

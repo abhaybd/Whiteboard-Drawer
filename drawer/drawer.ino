@@ -3,8 +3,15 @@
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
 #include <AccelStepper.h>
+#include <Servo.h>
 
 typedef float coord_t;
+
+const int TOOL_PIN = 9;
+const int TOOL_DOWN_POS = 0;
+const int TOOL_UP_POS = 15;
+const int TOOL_WAIT_MS = 50;
+int toolPos = TOOL_UP_POS;
 
 const float SPOOL_RAD = 5; // in mm
 const int TICKS_PER_ROT = 200;
@@ -28,6 +35,8 @@ const coord_t DEF_VEL = static_cast<coord_t>(50 * TICKS_PER_MM);
 Adafruit_MotorShield shield;
 Adafruit_StepperMotor *leftStepper = shield.getStepper(TICKS_PER_ROT, 1);
 Adafruit_StepperMotor *rightStepper = shield.getStepper(TICKS_PER_ROT, 2);
+
+Servo tool;
 
 AccelStepper left([]() {
     leftStepper->step(FORWARD, DOUBLE);
@@ -185,12 +194,22 @@ void setPosition(coord_t x, coord_t y, coord_t vel, float curvature, bool clockw
 }
 
 void setToolUp(bool up) {
-    // TODO: Implement
+    int target = up ? TOOL_UP_POS : TOOL_DOWN_POS;
+    // If we're not already at the target position, set it now
+    if (target != toolPos) {
+        toolPos = target;
+        tool.write(target);
+        delay(TOOL_WAIT_MS); // delay to give the servo time to get there
+    }
 }
 
 void setup() {
     Serial.begin(9600);
     shield.begin();
+    tool.attach(TOOL_PIN);
+
+    toolPos = TOOL_UP_POS;
+    tool.write(toolPos);
 
     // configure motor inversions
     left.setPinsInverted(true, false, false);
@@ -202,6 +221,7 @@ coord_t targetY = 0;
 coord_t targetZ = 0;
 
 #define numParts 6
+#define commandLen 100
 void loop() {
     // wait for data to become available
     while (Serial.available() == 0) {
@@ -209,8 +229,8 @@ void loop() {
     }
 
     // read command from serial
-    char command[20] = {};
-    size_t len = Serial.readBytesUntil('\n', command, (sizeof command) - 1);
+    char* command = new char[commandLen]; // we'll allocate to the heap so we can free it earlier
+    size_t len = Serial.readBytesUntil('\n', command, commandLen - 1);
     command[len] = '\0'; // make sure string is null terminated
     Serial.print("// Recieved command: ");
     Serial.println(command);
@@ -222,6 +242,8 @@ void loop() {
         parts[i] = part;
         part = strtok(nullptr, " \n");
     }
+
+    delete [] command; // free the allocated memory on the heap
 
     // Execute g-code command
     char* type = parts[0];
