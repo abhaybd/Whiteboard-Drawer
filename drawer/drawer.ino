@@ -13,24 +13,24 @@ const int TOOL_UP_POS = 15;
 const int TOOL_WAIT_MS = 50;
 int toolPos = TOOL_UP_POS;
 
-const float SPOOL_RAD = 5; // in mm
+const float SPOOL_RAD = 2.5; // in mm
 const int TICKS_PER_ROT = 200;
 const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 
 // All of these in mm
 const coord_t LEFT_X = 0;
-const coord_t LEFT_Y = 1000;
-const coord_t RIGHT_X = 500;
-const coord_t RIGHT_Y = 1000;
+const coord_t LEFT_Y = 40;//953;
+const coord_t RIGHT_X = 40;//459;
+const coord_t RIGHT_Y = LEFT_Y;
 
 // Also in mm
-const coord_t OFFSET_X = 50;
-const coord_t OFFSET_Y = 50;
+const coord_t OFFSET_X = 41;
+const coord_t OFFSET_Y = 10;
 
 const coord_t HOME_X = (LEFT_X + RIGHT_X) / 2;
 const coord_t HOME_Y = RIGHT_Y / 2;
 
-const coord_t DEF_VEL = static_cast<coord_t>(50 * TICKS_PER_MM);
+const coord_t DEF_VEL = static_cast<coord_t>(20 * TICKS_PER_MM);
 
 Adafruit_MotorShield shield;
 Adafruit_StepperMotor *leftStepper = shield.getStepper(TICKS_PER_ROT, 1);
@@ -39,14 +39,14 @@ Adafruit_StepperMotor *rightStepper = shield.getStepper(TICKS_PER_ROT, 2);
 Servo tool;
 
 AccelStepper left([]() {
-    leftStepper->step(FORWARD, DOUBLE);
+    leftStepper->onestep(FORWARD, DOUBLE);
 }, []() {
-    leftStepper->step(BACKWARD, DOUBLE);
+    leftStepper->onestep(BACKWARD, DOUBLE);
 });
 AccelStepper right([]() {
-    rightStepper->step(FORWARD, DOUBLE);
+    rightStepper->onestep(FORWARD, DOUBLE);
 }, []() {
-    rightStepper->step(BACKWARD, DOUBLE);
+    rightStepper->onestep(BACKWARD, DOUBLE);
 });
 
 /**
@@ -77,26 +77,32 @@ void getPosition(coord_t& x, coord_t& y) {
     y = static_cast<coord_t>(fy - OFFSET_Y);
 }
 
+void moveBoth(int l, int r) {
+    left.move(l);
+    right.move(r);
+    left.setSpeed(l > 0 ? DEF_VEL : -DEF_VEL);
+    right.setSpeed(r > 0 ? DEF_VEL : -DEF_VEL);
+    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
+        left.runSpeedToPosition();
+        right.runSpeedToPosition();
+    }
+    left.stop();
+    right.stop();
+    delay(100);
+}
+
 void zero() {
     int stepsToMove = static_cast<int>(TICKS_PER_MM * hypot(RIGHT_X - LEFT_X, RIGHT_Y));
-    left.move(-stepsToMove);
-    left.setSpeed(DEF_VEL);
-    left.runSpeedToPosition();
-    right.move(-stepsToMove);
-    right.setSpeed(DEF_VEL);
-    right.runSpeedToPosition();
+    Serial.println("// Retracting...");
+    moveBoth(-stepsToMove, -stepsToMove);
 
     left.setCurrentPosition(0);
     right.setCurrentPosition(0);
 
     int l, r;
     calculateTargetSteps(HOME_X, HOME_Y, l, r);
-    left.move(l);
-    left.setSpeed(DEF_VEL);
-    left.runSpeedToPosition();
-    right.move(r);
-    right.setSpeed(DEF_VEL);
-    right.runSpeedToPosition();
+    Serial.println("// Homing...");
+    moveBoth(l, r);
 }
 
 float getSpoolVel(float velX, float velY, float fromSpoolX, float fromSpoolY) {
@@ -214,6 +220,11 @@ void setup() {
     // configure motor inversions
     left.setPinsInverted(true, false, false);
     right.setPinsInverted(false, false, false);
+
+    left.setAcceleration(DEF_VEL*2);
+    right.setAcceleration(DEF_VEL*2);
+    left.setMaxSpeed(DEF_VEL);
+    right.setMaxSpeed(DEF_VEL);
 }
 
 coord_t targetX = 0;
@@ -229,7 +240,7 @@ void loop() {
     }
 
     // read command from serial
-    char* command = new char[commandLen]; // we'll allocate to the heap so we can free it earlier
+    char command[commandLen] = {};
     size_t len = Serial.readBytesUntil('\n', command, commandLen - 1);
     command[len] = '\0'; // make sure string is null terminated
     Serial.print("// Recieved command: ");
@@ -243,12 +254,10 @@ void loop() {
         part = strtok(nullptr, " \n");
     }
 
-    delete [] command; // free the allocated memory on the heap
-
     // Execute g-code command
     char* type = parts[0];
     if (type == nullptr) {
-        Serial.println("// Invalid command! Failing silently...");
+        Serial.println("// Empty command! Failing silently...");
     } else if (strcmp(type, "G28") == 0) { // If it's a home command
         targetX = HOME_X;
         targetY = HOME_Y;

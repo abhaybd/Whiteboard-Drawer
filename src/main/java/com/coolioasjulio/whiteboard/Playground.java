@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Scanner;
 import purejavacomm.CommPortIdentifier;
 import purejavacomm.SerialPort;
 import purejavacomm.SerialPortEvent;
@@ -14,17 +15,12 @@ import purejavacomm.SerialPortEventListener;
 public class Playground implements SerialPortEventListener {
 
     public static void main(String[] args) throws Exception {
-//        Playground p = new Playground();
-//        while (true) {
-//            Playground.class.wait();
-//        }
-
-        Enumeration<CommPortIdentifier> portList = CommPortIdentifier.getPortIdentifiers();
-        System.out.println(portList.hasMoreElements());
-        while (portList.hasMoreElements()) {
-            System.out.println("Has more elements");
-            CommPortIdentifier portId = portList.nextElement();
-            System.out.println(portId.getName());
+        Playground p = new Playground();
+        Scanner in = new Scanner(System.in);
+        while (true) {
+            String line = in.nextLine();
+            p.out.print(line + "\n");
+            p.out.flush();
         }
     }
 
@@ -34,7 +30,7 @@ public class Playground implements SerialPortEventListener {
     private final PrintStream out;
 
     public Playground() throws Exception {
-        port = (SerialPort) CommPortIdentifier.getPortIdentifier("COM3").open("blah", 1000);
+        port = (SerialPort) CommPortIdentifier.getPortIdentifier("COM4").open("blah", 1000);
         port.setSerialPortParams(9600, SerialPort.DATABITS_8,
                 SerialPort.STOPBITS_1,
                 SerialPort.PARITY_NONE);

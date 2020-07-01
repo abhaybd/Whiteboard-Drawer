@@ -2,7 +2,7 @@
 #include <Adafruit_MotorShield.h>
 
 Adafruit_MotorShield shield;
-Adafruit_StepperMotor *stepper = shield.getStepper(200, 2);
+Adafruit_StepperMotor *stepper = shield.getStepper(200, 1);
 
 bool forward = true;
 
@@ -12,7 +12,8 @@ void setup() {
 }
 
 void loop() {
-    Serial.println("Forward=" + forward);
+    Serial.print("Forward=");
+    Serial.println(forward ? "true" : "false");
     stepper->step(200, forward ? FORWARD : BACKWARD, DOUBLE);
     forward = !forward;
 }

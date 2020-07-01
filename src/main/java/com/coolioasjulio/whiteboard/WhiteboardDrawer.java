@@ -15,7 +15,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
     public static void main(String[] args) {
         try {
             System.out.print("Connecting...");
-            WhiteboardDrawer wb = new WhiteboardDrawer("COM3");
+            WhiteboardDrawer wb = new WhiteboardDrawer("COM4");
             System.out.println("Done!");
             System.out.println("Printing...");
             wb.drawFromFile(new File("C:/Users/abdes/Downloads/output_0001.gcode"));
@@ -43,7 +43,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
         String response;
         do {
             System.out.println(">>> " + command);
-            out.println(command);
+            out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
             out.flush();
             do {
                 response = in.readLine();
