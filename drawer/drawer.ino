@@ -96,7 +96,7 @@ void moveBoth(int l, int r) {
 void zero() {
     int stepsToMove = static_cast<int>(TICKS_PER_MM * hypot(RIGHT_X - LEFT_X, RIGHT_Y));
     Serial.println("// Retracting...");
-    moveBoth(-stepsToMove, -stepsToMove);
+    //moveBoth(-stepsToMove, -stepsToMove);
 
     left.setCurrentPosition(0);
     right.setCurrentPosition(0);
@@ -151,54 +151,21 @@ void getTargetVel(coord_t currX, coord_t currY, coord_t x, coord_t y, float curv
 }
 
 void setPosition(coord_t x, coord_t y, coord_t vel, float curvature, bool clockwise) {
-    coord_t currX, currY;
+    // TODO: Make this work for G2/G3. Linearize curve and follow each segment uncoordinatedly.
     int lTarget, rTarget;
     calculateTargetSteps(x, y, lTarget, rTarget);
-    bool done = left.currentPosition() == lTarget && right.currentPosition() == rTarget;
-    while (!done) {
-        getPosition(currX, currY);
-        // create a velocity vector pointing in the desired direction
-        float velX = 0, velY = 0;
-        getTargetVel(currX, currY, x, y, curvature, clockwise, velX, velY);
-        velX *= vel;
-        velY *= vel;
-
-        // the ROC of the spool is the dot product of the velocity vector with the normalized vector from the spool to the anchor
-        float fromLX = x - OFFSET_X - LEFT_X;
-        float fromLY = y + OFFSET_Y - LEFT_Y;
-        float leftVel = getSpoolVel(velX, velY, fromLX, fromLY);
-
-        float fromRX = x + OFFSET_X - RIGHT_X;
-        float fromRY = y + OFFSET_Y - RIGHT_Y;
-        float rightVel = getSpoolVel(velX, velY, fromRX, fromRY);
-
-        Serial.print("// Pos=(" + String(currX) + "," + currY + "), Target=(" + x + "," + y + "), Speed=" + vel + ", ");
-        Serial.print("Speeds: Left=");
-        Serial.print(leftVel);
-        Serial.print(", Right=");
-        Serial.println(rightVel);
-
-        bool lDone = abs(left.currentPosition() - lTarget) <= 5;
-        bool rDone = abs(right.currentPosition() - rTarget) <= 5;
-
-        if (lDone) {
-            left.stop();
-        } else {
-            left.setSpeed(leftVel * TICKS_PER_MM);
-            left.runSpeed();
-        }
-
-        if (rDone) {
-            right.stop();
-        } else {
-            right.setSpeed(rightVel * TICKS_PER_MM);
-            right.runSpeed();
-        }
-        done = lDone && rDone;
+    left.moveTo(lTarget);
+    right.moveTo(rTarget);
+    left.setSpeed(lTarget > left.currentPosition() ? DEF_VEL : -DEF_VEL);
+    right.setSpeed(rTarget > right.currentPosition() ? DEF_VEL : -DEF_VEL);
+    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
+        left.runSpeedToPosition();
+        right.runSpeedToPosition();
     }
-
     left.stop();
     right.stop();
+    leftStepper->release();
+    rightStepper->release();
 }
 
 void setToolUp(bool up) {
@@ -219,8 +186,8 @@ void setup() {
     toolPos = TOOL_UP_POS;
     tool.write(toolPos);
 
-    left.setAcceleration(DEF_VEL*2);
-    right.setAcceleration(DEF_VEL*2);
+    left.setAcceleration(DEF_VEL * 2);
+    right.setAcceleration(DEF_VEL * 2);
     left.setMaxSpeed(DEF_VEL);
     right.setMaxSpeed(DEF_VEL);
 }
@@ -281,11 +248,11 @@ void loop() {
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
         if (code == 0 || code == 1) {
-            setPosition(targetX, targetY, DEF_VEL/TICKS_PER_MM, 0, false);
+            setPosition(targetX, targetY, DEF_VEL / TICKS_PER_MM, 0, false);
         } else if (code == 2 || code == 3) {
             if (arcI != 0 || arcJ != 0) {
                 float rad = hypot(arcI, arcJ);
-                setPosition(targetX, targetY, DEF_VEL/TICKS_PER_MM, 1 / rad, code == 2);
+                setPosition(targetX, targetY, DEF_VEL / TICKS_PER_MM, 1 / rad, code == 2);
             } else {
                 Serial.println("// Invalid G2/G3 command!");
                 Serial.println("!!");
