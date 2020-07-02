@@ -13,24 +13,24 @@ const int TOOL_UP_POS = 15;
 const int TOOL_WAIT_MS = 50;
 int toolPos = TOOL_UP_POS;
 
-const float SPOOL_RAD = 2.5; // in mm
+const float SPOOL_RAD = 3; // in mm
 const int TICKS_PER_ROT = 200;
 const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 
 // All of these in mm
 const coord_t LEFT_X = 0;
-const coord_t LEFT_Y = 40;//953;
-const coord_t RIGHT_X = 40;//459;
+const coord_t LEFT_Y = 200;//953;
+const coord_t RIGHT_X = 459;
 const coord_t RIGHT_Y = LEFT_Y;
 
 // Also in mm
 const coord_t OFFSET_X = 41;
-const coord_t OFFSET_Y = 10;
+const coord_t OFFSET_Y = 20;
 
 const coord_t HOME_X = (LEFT_X + RIGHT_X) / 2;
 const coord_t HOME_Y = RIGHT_Y / 2;
 
-const coord_t DEF_VEL = static_cast<coord_t>(20 * TICKS_PER_MM);
+const long DEF_VEL = static_cast<long>(10 * TICKS_PER_MM);
 
 Adafruit_MotorShield shield;
 Adafruit_StepperMotor *leftStepper = shield.getStepper(TICKS_PER_ROT, 1);
@@ -39,14 +39,14 @@ Adafruit_StepperMotor *rightStepper = shield.getStepper(TICKS_PER_ROT, 2);
 Servo tool;
 
 AccelStepper left([]() {
-    leftStepper->onestep(FORWARD, DOUBLE);
+    leftStepper->onestep(FORWARD, SINGLE);
 }, []() {
-    leftStepper->onestep(BACKWARD, DOUBLE);
+    leftStepper->onestep(BACKWARD, SINGLE);
 });
-AccelStepper right([]() {
-    rightStepper->onestep(FORWARD, DOUBLE);
+AccelStepper right([]() { // this is inverted to invert the motor
+    rightStepper->onestep(BACKWARD, SINGLE);
 }, []() {
-    rightStepper->onestep(BACKWARD, DOUBLE);
+    rightStepper->onestep(FORWARD, SINGLE);
 });
 
 /**
@@ -88,6 +88,8 @@ void moveBoth(int l, int r) {
     }
     left.stop();
     right.stop();
+    leftStepper->release();
+    rightStepper->release();
     delay(100);
 }
 
@@ -217,10 +219,6 @@ void setup() {
     toolPos = TOOL_UP_POS;
     tool.write(toolPos);
 
-    // configure motor inversions
-    left.setPinsInverted(true, false, false);
-    right.setPinsInverted(false, false, false);
-
     left.setAcceleration(DEF_VEL*2);
     right.setAcceleration(DEF_VEL*2);
     left.setMaxSpeed(DEF_VEL);
@@ -283,11 +281,11 @@ void loop() {
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
         if (code == 0 || code == 1) {
-            setPosition(targetX, targetY, DEF_VEL, 0, false);
+            setPosition(targetX, targetY, DEF_VEL/TICKS_PER_MM, 0, false);
         } else if (code == 2 || code == 3) {
             if (arcI != 0 || arcJ != 0) {
                 float rad = hypot(arcI, arcJ);
-                setPosition(targetX, targetY, DEF_VEL, 1 / rad, code == 2);
+                setPosition(targetX, targetY, DEF_VEL/TICKS_PER_MM, 1 / rad, code == 2);
             } else {
                 Serial.println("// Invalid G2/G3 command!");
                 Serial.println("!!");
