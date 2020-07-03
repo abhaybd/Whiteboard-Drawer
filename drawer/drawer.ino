@@ -30,7 +30,9 @@ const coord_t OFFSET_Y = 20;
 const coord_t HOME_X = (LEFT_X + RIGHT_X) / 2;
 const coord_t HOME_Y = RIGHT_Y / 2;
 
-const long DEF_VEL = static_cast<long>(10 * TICKS_PER_MM);
+const coord_t MAX_SEG_LEN = 10;
+
+const long DEF_VEL = static_cast<long>(10 * TICKS_PER_MM); // in ticks per second
 
 Adafruit_MotorShield shield;
 Adafruit_StepperMotor *leftStepper = shield.getStepper(TICKS_PER_ROT, 1);
@@ -90,7 +92,21 @@ void moveBoth(int l, int r) {
     right.stop();
     leftStepper->release();
     rightStepper->release();
-    delay(100);
+}
+
+void moveBothTo(int l, int r) {
+    left.moveTo(l);
+    right.moveTo(r);
+    left.setSpeed(l > left.currentPosition() ? DEF_VEL : -DEF_VEL);
+    right.setSpeed(r > right.currentPosition() ? DEF_VEL : -DEF_VEL);
+    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
+        left.runSpeedToPosition();
+        right.runSpeedToPosition();
+    }
+    left.stop();
+    right.stop();
+    leftStepper->release();
+    rightStepper->release();
 }
 
 void zero() {
@@ -107,65 +123,61 @@ void zero() {
     moveBoth(l, r);
 }
 
-float getSpoolVel(float velX, float velY, float fromSpoolX, float fromSpoolY) {
-    float mag = hypot(fromSpoolX, fromSpoolY);
-    fromSpoolX /= mag;
-    fromSpoolY /= mag;
-    return velX * fromSpoolX + velY * fromSpoolY;
+float arcLength(coord_t currX, coord_t currY, coord_t x, coord_t y, float curvature) {
+    float dx = x - currX;
+    float dy = y - currY;
+
+    if (curvature == 0) return hypot(dx, dy);
+    else {
+        float dist = hypot(dx, dy);
+        float angle = 2 * asin(dist * curvature / 2);
+        return angle / curvature;
+    }
 }
 
-void getTargetVel(coord_t currX, coord_t currY, coord_t x, coord_t y, float curvature, bool clockwise, float& velX, float& velY) {
-    float toTargetX = x - currX;
-    float toTargetY = y - currY;
-    float mag = hypot(toTargetX, toTargetY);
-    toTargetX /= mag;
-    toTargetY /= mag;
+void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t targetY, float curvature, bool clockwise, coord_t& interpX, coord_t& interpY) {
     if (curvature == 0) {
-        velX = toTargetX;
-        velY = toTargetY;
+        interpX = currX + t * (targetX - currX);
+        interpY = currY + t * (targetY - currY);
     } else {
-        float rad = 1 / curvature;
-        coord_t midX = (currX + x) / 2;
-        coord_t midY = (currY + y) / 2;
-        float d = sqrt(sq(rad) - (sq(x - currX) + sq(y - currY)) / 4);
-
-        float arcX, arcY;
+        float dx = targetX - currX;
+        float dy = targetY - currY;
+        float dist = hypot(dx, dy);
+        float dxNorm = dx / dist;
+        float dyNorm = dy / dist;
+        float d = sqrt(sq(1 / curvature) - sq(dist / 2));
+        float cX, cY;
         if (clockwise) {
-            arcX = midX + toTargetY * d;
-            arcY = midY - toTargetX * d;
+            cX = currX + dx / 2 + dyNorm * d;
+            cY = currY + dy / 2 - dxNorm * d;
         } else {
-            arcX = midX - toTargetY * d;
-            arcY = midY + toTargetX * d;
+            cX = currX + dx / 2 - dyNorm * d;
+            cY = currY + dy / 2 + dxNorm * d;
         }
-
-        float toCurrX = (currX - arcX) / rad;
-        float toCurrY = (currY - arcY) / rad;
-        if (clockwise) {
-            velX = toCurrY;
-            velY = -toCurrX;
-        } else {
-            velX = -toCurrY;
-            velY = toCurrX;
-        }
+        float fromCX = currX - cX;
+        float fromCY = currY - cY;
+        float angle = 2 * asin(dist * curvature / 2) * t;
+        if (!clockwise) angle = -angle;
+        float x = cos(angle) * fromCX + sin(angle) * fromCY;
+        float y = -sin(angle) * fromCX + cos(angle) * fromCY;
+        interpX = cX + x;
+        interpY = cY + y;
     }
 }
 
-void setPosition(coord_t x, coord_t y, coord_t vel, float curvature, bool clockwise) {
-    // TODO: Make this work for G2/G3. Linearize curve and follow each segment uncoordinatedly.
-    int lTarget, rTarget;
-    calculateTargetSteps(x, y, lTarget, rTarget);
-    left.moveTo(lTarget);
-    right.moveTo(rTarget);
-    left.setSpeed(lTarget > left.currentPosition() ? DEF_VEL : -DEF_VEL);
-    right.setSpeed(rTarget > right.currentPosition() ? DEF_VEL : -DEF_VEL);
-    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
-        left.runSpeedToPosition();
-        right.runSpeedToPosition();
+void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
+    coord_t currX, currY;
+    getPosition(currX, currY);
+    float arcLen = arcLength(currX, currY, x, y, curvature);
+    int numSegs = ceil(arcLen / MAX_SEG_LEN);
+    for (int i = 0; i < numSegs; i++) {
+        float t = static_cast<float>(i + 1) / numSegs;
+        coord_t interpX, interpY;
+        interpolate(t, currX, currY, x, y, curvature, clockwise, interpX, interpY);
+        int left, right;
+        calculateTargetSteps(interpX, interpY, left, right);
+        moveBothTo(left, right);
     }
-    left.stop();
-    right.stop();
-    leftStepper->release();
-    rightStepper->release();
 }
 
 void setToolUp(bool up) {
@@ -248,11 +260,11 @@ void loop() {
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
         if (code == 0 || code == 1) {
-            setPosition(targetX, targetY, DEF_VEL / TICKS_PER_MM, 0, false);
+            setPosition(targetX, targetY, 0, false);
         } else if (code == 2 || code == 3) {
             if (arcI != 0 || arcJ != 0) {
                 float rad = hypot(arcI, arcJ);
-                setPosition(targetX, targetY, DEF_VEL / TICKS_PER_MM, 1 / rad, code == 2);
+                setPosition(targetX, targetY, 1 / rad, code == 2);
             } else {
                 Serial.println("// Invalid G2/G3 command!");
                 Serial.println("!!");
