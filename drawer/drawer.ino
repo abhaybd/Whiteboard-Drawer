@@ -70,13 +70,11 @@ void getPosition(coord_t& x, coord_t& y) {
     coord_t w = RIGHT_X - LEFT_X; // width of whiteboard
 
     // derived from geometry/math
-    float fx = sq(l1) - sq(l2) + sq(o) + sq(w) - 2 * o * w;
-    fx /= 2 * (w - o);
+    float leftAnchorX = (sq(l1) - sq(l2) + sq(o) + sq(w) - 2 * o * w) / (2 * (w - o));
+    float leftAnchorY = LEFT_Y - sqrt(sq(l1) - sq(leftAnchorX));
 
-    float fy = LEFT_Y - sqrt(sq(l1) - sq(fx));
-
-    x = static_cast<coord_t>(fx + OFFSET_X);
-    y = static_cast<coord_t>(fy - OFFSET_Y);
+    x = static_cast<coord_t>(leftAnchorX + OFFSET_X);
+    y = static_cast<coord_t>(leftAnchorY - OFFSET_Y);
 }
 
 void moveBoth(int l, int r) {
@@ -137,15 +135,23 @@ float arcLength(coord_t currX, coord_t currY, coord_t x, coord_t y, float curvat
 
 void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t targetY, float curvature, bool clockwise, coord_t& interpX, coord_t& interpY) {
     if (curvature == 0) {
+        // If this is a line, interpolation is easy peasy
         interpX = currX + t * (targetX - currX);
         interpY = currY + t * (targetY - currY);
     } else {
+        // Get vector from current to target
         float dx = targetX - currX;
         float dy = targetY - currY;
         float dist = hypot(dx, dy);
+
+        // normalize that vector
         float dxNorm = dx / dist;
         float dyNorm = dy / dist;
+
+        // This is the distance between the circle center and the chord
         float d = sqrt(sq(1 / curvature) - sq(dist / 2));
+
+        // Calculate the circle center (find midpoint between curr and target and add normalized vector rotated CW or CCW 90 deg and scaled by d)
         float cX, cY;
         if (clockwise) {
             cX = currX + dx / 2 + dyNorm * d;
@@ -154,12 +160,17 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
             cX = currX + dx / 2 - dyNorm * d;
             cY = currY + dy / 2 + dxNorm * d;
         }
+
+        // Get vector from circle center to current position
         float fromCX = currX - cX;
         float fromCY = currY - cY;
+        // This is the angle subtended by the chord from current to target
         float angle = 2 * asin(dist * curvature / 2) * t;
-        if (!clockwise) angle = -angle;
+        if (!clockwise) angle = -angle; // Negative angle means CCW
+        // Apply a CW rotation by angle (if angle < 0 then rotation is CCW)
         float x = cos(angle) * fromCX + sin(angle) * fromCY;
         float y = -sin(angle) * fromCX + cos(angle) * fromCY;
+        // Add back to circle center to get interpolated point
         interpX = cX + x;
         interpY = cY + y;
     }
@@ -167,16 +178,17 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
 
 void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
     coord_t currX, currY;
-    getPosition(currX, currY);
+    getPosition(currX, currY); // get the current position
     float arcLen = arcLength(currX, currY, x, y, curvature);
-    int numSegs = ceil(arcLen / MAX_SEG_LEN);
+    int numSegs = ceil(arcLen / MAX_SEG_LEN); // calculate the number of sub-segments to use based on arc length
+    // Step along each segment
     for (int i = 0; i < numSegs; i++) {
         float t = static_cast<float>(i + 1) / numSegs;
         coord_t interpX, interpY;
-        interpolate(t, currX, currY, x, y, curvature, clockwise, interpX, interpY);
+        interpolate(t, currX, currY, x, y, curvature, clockwise, interpX, interpY); // calculate target x and y positions
         int left, right;
-        calculateTargetSteps(interpX, interpY, left, right);
-        moveBothTo(left, right);
+        calculateTargetSteps(interpX, interpY, left, right); // from x and y positions, calculate target motor steps
+        moveBothTo(left, right); // move both motors uncoordinatedly
     }
 }
 
