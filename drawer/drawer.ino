@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
 #include <AccelStepper.h>
+#include <MultiStepper.h>
 #include <Servo.h>
 
 typedef float coord_t;
@@ -30,7 +31,7 @@ const coord_t OFFSET_Y = 20;
 const coord_t HOME_X = (LEFT_X + RIGHT_X) / 2;
 const coord_t HOME_Y = RIGHT_Y / 2;
 
-const coord_t MAX_SEG_LEN = 10;
+const coord_t MAX_SEG_LEN = 5;
 
 const long DEF_VEL = static_cast<long>(10 * TICKS_PER_MM); // in ticks per second
 
@@ -50,6 +51,8 @@ AccelStepper right([]() { // this is inverted to invert the motor
 }, []() {
     rightStepper->onestep(FORWARD, SINGLE);
 });
+
+MultiStepper ms;
 
 /**
     Calculates the target position of each stepper, in units of steps. x and y are in mm.
@@ -93,14 +96,9 @@ void moveBoth(int l, int r) {
 }
 
 void moveBothTo(int l, int r) {
-    left.moveTo(l);
-    right.moveTo(r);
-    left.setSpeed(l > left.currentPosition() ? DEF_VEL : -DEF_VEL);
-    right.setSpeed(r > right.currentPosition() ? DEF_VEL : -DEF_VEL);
-    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
-        left.runSpeedToPosition();
-        right.runSpeedToPosition();
-    }
+    long positions[] = {l, r};
+    ms.moveTo(positions);
+    ms.runSpeedToPosition();
     left.stop();
     right.stop();
     leftStepper->release();
@@ -214,6 +212,9 @@ void setup() {
     right.setAcceleration(DEF_VEL * 2);
     left.setMaxSpeed(DEF_VEL);
     right.setMaxSpeed(DEF_VEL);
+
+    ms.addStepper(left);
+    ms.addStepper(right);
 }
 
 coord_t targetX = 0;
@@ -265,7 +266,7 @@ void loop() {
                 targetZ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             } else if (parts[i][0] == 'I') {
                 arcI = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
-            } else if (parts[i][1] == 'J') {
+            } else if (parts[i][0] == 'J') {
                 arcJ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             }
         }
