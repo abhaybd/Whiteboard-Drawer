@@ -18,8 +18,8 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
             WhiteboardDrawer wb = new WhiteboardDrawer("COM4");
             System.out.println("Done!");
             System.out.println("Printing...");
-            wb.drawFromFile(new File("C:/Users/abdes/Downloads/output_0001.gcode"));
-            System.out.println("Done printing!");
+            boolean success = wb.drawFromFile(new File("helloworld.gcode"));
+            System.out.println("Done printing! Success=" + success);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -95,7 +95,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
             default:
                 return command
                         .replaceAll("F[.\\d\\-]+", "") // remove F arg
-                        .replaceAll("0{2,}(?=\\s|$)", "0") // Remove trailing zeros
+                        //.replaceAll("(\\.\\d*)0{2,}(?=\\s|$)", "$10") // Remove trailing zeros
                         .trim();
         }
     }

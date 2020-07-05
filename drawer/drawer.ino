@@ -8,10 +8,10 @@
 
 typedef float coord_t;
 
-const int TOOL_PIN = 9;
-const int TOOL_DOWN_POS = 0;
-const int TOOL_UP_POS = 15;
-const int TOOL_WAIT_MS = 50;
+const int TOOL_PIN = 10;
+const int TOOL_DOWN_POS = 90;
+const int TOOL_UP_POS = 25;
+const int TOOL_WAIT_MS = 100;
 int toolPos = TOOL_UP_POS;
 
 const float SPOOL_RAD = 3; // in mm
