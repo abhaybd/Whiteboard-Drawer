@@ -17,7 +17,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
         try (WhiteboardDrawer wb = new WhiteboardDrawer("COM4")){
             System.out.println("Done!");
             System.out.println("Printing...");
-            boolean success = wb.drawFromFile(new File("calib.gcode"));
+            boolean success = wb.drawFromFile(new File("elephant.gcode"));
             System.out.println("Done printing! Success=" + success);
         } catch (Exception e) {
             System.out.println("Error!");

@@ -21,12 +21,12 @@ const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 // All of these in mm
 const coord_t LEFT_X = 0;
 const coord_t LEFT_Y = 400;//953;
-const coord_t RIGHT_X = 459;
+const coord_t RIGHT_X = 660;
 const coord_t RIGHT_Y = LEFT_Y;
 
 // Also in mm
-const coord_t OFFSET_X = 41;
-const coord_t OFFSET_Y = 20;
+const coord_t OFFSET_X = 41.5;
+const coord_t OFFSET_Y = 40;
 
 const coord_t HOME_X = (LEFT_X + RIGHT_X) / 2;
 const coord_t HOME_Y = RIGHT_Y / 2;
@@ -177,6 +177,8 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
 void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
     coord_t currX, currY;
     getPosition(currX, currY); // get the current position
+    if (hypot(x-currX, y-currY) <= 0.5) return; // Return early if we're already at target
+    Serial.println("// Setting position!");
     float arcLen = arcLength(currX, currY, x, y, curvature);
     int numSegs = ceil(arcLen / MAX_SEG_LEN); // calculate the number of sub-segments to use based on arc length
     // Step along each segment
@@ -215,10 +217,12 @@ void setup() {
 
     ms.addStepper(left);
     ms.addStepper(right);
+
+    Serial.println("// Hello world!");
 }
 
-coord_t targetX = 0;
-coord_t targetY = 0;
+coord_t targetX = HOME_X;
+coord_t targetY = HOME_Y;
 coord_t targetZ = 0;
 
 #define numParts 6
@@ -269,6 +273,9 @@ void loop() {
             } else if (parts[i][0] == 'J') {
                 arcJ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             }
+        }
+        if (targetX < OFFSET_X+5) { // Clamp to prevent invalid x target
+            targetX = OFFSET_X+5;
         }
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
