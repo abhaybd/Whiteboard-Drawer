@@ -14,13 +14,13 @@ const int TOOL_UP_POS = 25;
 const int TOOL_WAIT_MS = 100;
 int toolPos = TOOL_UP_POS;
 
-const float SPOOL_RAD = 3; // in mm
+const float SPOOL_RAD = 7.5; // in mm
 const int TICKS_PER_ROT = 200;
 const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 
 // All of these in mm
 const coord_t LEFT_X = 0;
-const coord_t LEFT_Y = 400;//953;
+const coord_t LEFT_Y = 300;//953;
 const coord_t RIGHT_X = 660;
 const coord_t RIGHT_Y = LEFT_Y;
 
@@ -106,10 +106,6 @@ void moveBothTo(int l, int r) {
 }
 
 void zero() {
-    int stepsToMove = static_cast<int>(TICKS_PER_MM * hypot(RIGHT_X - LEFT_X, RIGHT_Y));
-    Serial.println("// Retracting...");
-    //moveBoth(-stepsToMove, -stepsToMove);
-
     left.setCurrentPosition(0);
     right.setCurrentPosition(0);
 
@@ -177,10 +173,14 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
 void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
     coord_t currX, currY;
     getPosition(currX, currY); // get the current position
-    if (hypot(x-currX, y-currY) <= 0.5) return; // Return early if we're already at target
+    if (hypot(x-currX, y-currY) <= 0.1) return; // Return early if we're already at target
     Serial.println("// Setting position!");
     float arcLen = arcLength(currX, currY, x, y, curvature);
     int numSegs = ceil(arcLen / MAX_SEG_LEN); // calculate the number of sub-segments to use based on arc length
+    Serial.print("// ArcLen=");
+    Serial.print(arcLen);
+    Serial.print(", numSegs=");
+    Serial.println(numSegs);
     // Step along each segment
     for (int i = 0; i < numSegs; i++) {
         float t = static_cast<float>(i + 1) / numSegs;
@@ -190,6 +190,7 @@ void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
         calculateTargetSteps(interpX, interpY, left, right); // from x and y positions, calculate target motor steps
         moveBothTo(left, right); // move both motors uncoordinatedly
     }
+    Serial.println("// Move done!");
 }
 
 void setToolUp(bool up) {
@@ -294,7 +295,17 @@ void loop() {
             Serial.print("// Unsupported g-code: G");
             Serial.println(code);
         }
+    } else if (strcmp(type, "M118") == 0) {
+        coord_t x, y;
+        getPosition(x, y);
+        Serial.print("// X:");
+        Serial.print(x);
+        Serial.print(" Y:");
+        Serial.print(y);
+        Serial.print(" Z:");
+        Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
     } else {
+    }
         Serial.println("// Invalid command! Failing silently...");
     }
 
