@@ -17,7 +17,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
         try (WhiteboardDrawer wb = new WhiteboardDrawer("COM4")){
             System.out.println("Done!");
             System.out.println("Printing...");
-            boolean success = wb.drawFromFile(new File("elephant.gcode"));
+            boolean success = wb.drawFromFile(new File("helloworld.gcode"));
             System.out.println("Done printing! Success=" + success);
         } catch (Exception e) {
             System.out.println("Error!");
@@ -51,7 +51,7 @@ public class WhiteboardDrawer implements AutoCloseable, Closeable {
             } while (response.startsWith("//")); // skip past debug info
         } while (response.equals("rs"));
 
-        return response.equals("ok");
+        return response.startsWith("ok");
     }
 
     public boolean drawFromFile(File file) throws IOException {

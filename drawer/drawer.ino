@@ -304,8 +304,13 @@ void loop() {
         Serial.print(y);
         Serial.print(" Z:");
         Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
+        long l = left.currentPosition(); // length of left cord
+        long r = right.currentPosition(); // length of right cord
+        Serial.print("// L:");
+        Serial.print(l);
+        Serial.print(" R:");
+        Serial.println(r);
     } else {
-    }
         Serial.println("// Invalid command! Failing silently...");
     }
 
