@@ -80,25 +80,16 @@ void getPosition(coord_t& x, coord_t& y) {
     y = static_cast<coord_t>(leftAnchorY - OFFSET_Y);
 }
 
-void moveBoth(int l, int r) {
-    left.move(l);
-    right.move(r);
-    left.setSpeed(l > 0 ? DEF_VEL : -DEF_VEL);
-    right.setSpeed(r > 0 ? DEF_VEL : -DEF_VEL);
-    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
-        left.runSpeedToPosition();
-        right.runSpeedToPosition();
-    }
-    left.stop();
-    right.stop();
-    leftStepper->release();
-    rightStepper->release();
-}
-
 void moveBothTo(int l, int r) {
-    long positions[] = {l, r};
-    ms.moveTo(positions);
-    ms.runSpeedToPosition();
+    //long positions[] = {l, r};
+    //ms.moveTo(positions);
+    //ms.runSpeedToPosition();
+    left.moveTo(l);
+    right.moveTo(r);
+    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
+        left.run();
+        right.run();
+    }
     left.stop();
     right.stop();
     leftStepper->release();
@@ -112,7 +103,7 @@ void zero() {
     int l, r;
     calculateTargetSteps(HOME_X, HOME_Y, l, r);
     Serial.println("// Homing...");
-    moveBoth(l, r);
+    moveBothTo(l, r);
 }
 
 float arcLength(coord_t currX, coord_t currY, coord_t x, coord_t y, float curvature) {
@@ -173,7 +164,7 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
 void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
     coord_t currX, currY;
     getPosition(currX, currY); // get the current position
-    if (hypot(x-currX, y-currY) <= 0.1) return; // Return early if we're already at target
+    if (hypot(x - currX, y - currY) <= 0.1) return; // Return early if we're already at target
     Serial.println("// Setting position!");
     float arcLen = arcLength(currX, currY, x, y, curvature);
     int numSegs = ceil(arcLen / MAX_SEG_LEN); // calculate the number of sub-segments to use based on arc length
@@ -275,8 +266,8 @@ void loop() {
                 arcJ = static_cast<coord_t>(strtod(&parts[i][1], nullptr));
             }
         }
-        if (targetX < OFFSET_X+5) { // Clamp to prevent invalid x target
-            targetX = OFFSET_X+5;
+        if (targetX < OFFSET_X + 5) { // Clamp to prevent invalid x target
+            targetX = OFFSET_X + 5;
         }
         setToolUp(targetZ >= 0);
         long code = strtol(&type[1], nullptr, 10);
@@ -310,6 +301,12 @@ void loop() {
         Serial.print(l);
         Serial.print(" R:");
         Serial.println(r);
+    } else if (type[0] == 'L') {
+        long pos = strtol(parts[1], nullptr, 10);
+        moveBothTo(pos, right.currentPosition());
+    } else if (type[0] == 'R') {
+        long pos = strtol(parts[1], nullptr, 10);
+        moveBothTo(left.currentPosition(), pos);
     } else {
         Serial.println("// Invalid command! Failing silently...");
     }
