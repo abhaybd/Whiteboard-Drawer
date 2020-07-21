@@ -20,7 +20,7 @@ const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 
 // All of these in mm
 const coord_t LEFT_X = 0;
-const coord_t LEFT_Y = 300;//953;
+const coord_t LEFT_Y = 400;//953;
 const coord_t RIGHT_X = 660;
 const coord_t RIGHT_Y = LEFT_Y;
 
@@ -81,19 +81,15 @@ void getPosition(coord_t& x, coord_t& y) {
 }
 
 void moveBothTo(int l, int r) {
-    //long positions[] = {l, r};
-    //ms.moveTo(positions);
-    //ms.runSpeedToPosition();
-    left.moveTo(l);
-    right.moveTo(r);
-    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
-        left.run();
-        right.run();
-    }
-    left.stop();
-    right.stop();
-    leftStepper->release();
-    rightStepper->release();
+    long positions[] = {l, r};
+    ms.moveTo(positions);
+    ms.runSpeedToPosition();
+    //    left.moveTo(l);
+    //    right.moveTo(r);
+    //    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
+    //        left.run();
+    //        right.run();
+    //    }
 }
 
 void zero() {
@@ -286,21 +282,27 @@ void loop() {
             Serial.print("// Unsupported g-code: G");
             Serial.println(code);
         }
-    } else if (strcmp(type, "M118") == 0) {
-        coord_t x, y;
-        getPosition(x, y);
-        Serial.print("// X:");
-        Serial.print(x);
-        Serial.print(" Y:");
-        Serial.print(y);
-        Serial.print(" Z:");
-        Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
-        long l = left.currentPosition(); // length of left cord
-        long r = right.currentPosition(); // length of right cord
-        Serial.print("// L:");
-        Serial.print(l);
-        Serial.print(" R:");
-        Serial.println(r);
+    } else if (type[0] == 'M') {
+        long code = strtol(&type[1], nullptr, 10);
+        if (code == 118) {
+            coord_t x, y;
+            getPosition(x, y);
+            Serial.print("// X:");
+            Serial.print(x);
+            Serial.print(" Y:");
+            Serial.print(y);
+            Serial.print(" Z:");
+            Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
+            long l = left.currentPosition(); // length of left cord
+            long r = right.currentPosition(); // length of right cord
+            Serial.print("// L:");
+            Serial.print(l);
+            Serial.print(" R:");
+            Serial.println(r);
+        } else if (code == 18) {
+            leftStepper->release();
+            rightStepper->release();
+        }
     } else if (type[0] == 'L') {
         long pos = strtol(parts[1], nullptr, 10);
         moveBothTo(pos, right.currentPosition());
