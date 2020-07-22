@@ -173,22 +173,41 @@ public class App {
     private void onSubmit(ActionEvent e) {
         setInputEnabled(false);
         new Thread(() -> {
-            sendCommand(inputField.getText());
-            updatePosition();
-            SwingUtilities.invokeLater(() -> setInputEnabled(true));
+            try {
+                sendCommand(inputField.getText());
+                updatePosition();
+                SwingUtilities.invokeLater(() -> setInputEnabled(true));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                showError("An unexpected error occurred!");
+            }
         }).start();
     }
 
-    private void sendCommand(String c) {
+    private void sendCommand(String c) throws IOException {
         synchronized (serialLock) {
             if (serialPort != null) {
                 final String command = sanitize(c);
                 inputField.setText("");
                 if (command.length() > 0) {
-                    SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + ">>> " + command + "\n"));
-                    System.out.println(">>> " + command);
-                    out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
-                    out.flush();
+                    try {
+                        ignoreSerialEvent = true;
+                        String response;
+                        do {
+                            SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + ">>> " + command + "\n"));
+                            System.out.println(">>> " + command);
+                            out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
+                            out.flush();
+                            do {
+                                response = in.readLine();
+                                final String r = response;
+                                System.out.println("<<< " + response);
+                                SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + "<<< " + r + "\n"));
+                            } while (response.startsWith("//")); // skip past debug info
+                        } while (response.equals("rs"));
+                    } finally {
+                        ignoreSerialEvent = false;
+                    }
                 }
             }
         }
