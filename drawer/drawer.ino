@@ -57,9 +57,9 @@ MultiStepper ms;
 /**
     Calculates the target position of each stepper, in units of steps. x and y are in mm.
 */
-void calculateTargetSteps(coord_t x, coord_t y, int& l1, int& l2) {
-    l1 = static_cast<int>(hypot(x - OFFSET_X - LEFT_X, y + OFFSET_Y - LEFT_Y) * TICKS_PER_MM);
-    l2 = static_cast<int>(hypot(x + OFFSET_X - RIGHT_X, y + OFFSET_Y - RIGHT_Y) * TICKS_PER_MM);
+void calculateTargetSteps(coord_t x, coord_t y, long& l1, long& l2) {
+    l1 = static_cast<long>(hypot(x - OFFSET_X - LEFT_X, y + OFFSET_Y - LEFT_Y) * TICKS_PER_MM);
+    l2 = static_cast<long>(hypot(x + OFFSET_X - RIGHT_X, y + OFFSET_Y - RIGHT_Y) * TICKS_PER_MM);
 }
 
 /**
@@ -80,23 +80,17 @@ void getPosition(coord_t& x, coord_t& y) {
     y = static_cast<coord_t>(leftAnchorY - OFFSET_Y);
 }
 
-void moveBothTo(int l, int r) {
+void moveBothTo(long l, long r) {
     long positions[] = {l, r};
     ms.moveTo(positions);
     ms.runSpeedToPosition();
-    //    left.moveTo(l);
-    //    right.moveTo(r);
-    //    while (left.currentPosition() != left.targetPosition() || right.currentPosition() != right.targetPosition()) {
-    //        left.run();
-    //        right.run();
-    //    }
 }
 
 void zero() {
     left.setCurrentPosition(0);
     right.setCurrentPosition(0);
 
-    int l, r;
+    long l, r;
     calculateTargetSteps(HOME_X, HOME_Y, l, r);
     Serial.println("// Homing...");
     moveBothTo(l, r);
@@ -160,24 +154,22 @@ void interpolate(float t, coord_t currX, coord_t currY, coord_t targetX, coord_t
 void setPosition(coord_t x, coord_t y, float curvature, bool clockwise) {
     coord_t currX, currY;
     getPosition(currX, currY); // get the current position
-    if (hypot(x - currX, y - currY) <= 0.1) return; // Return early if we're already at target
-    Serial.println("// Setting position!");
     float arcLen = arcLength(currX, currY, x, y, curvature);
     int numSegs = ceil(arcLen / MAX_SEG_LEN); // calculate the number of sub-segments to use based on arc length
     Serial.print("// ArcLen=");
     Serial.print(arcLen);
     Serial.print(", numSegs=");
     Serial.println(numSegs);
+    printCurrentPos();
     // Step along each segment
     for (int i = 0; i < numSegs; i++) {
         float t = static_cast<float>(i + 1) / numSegs;
         coord_t interpX, interpY;
         interpolate(t, currX, currY, x, y, curvature, clockwise, interpX, interpY); // calculate target x and y positions
-        int left, right;
+        long left, right;
         calculateTargetSteps(interpX, interpY, left, right); // from x and y positions, calculate target motor steps
         moveBothTo(left, right); // move both motors uncoordinatedly
     }
-    Serial.println("// Move done!");
 }
 
 void setToolUp(bool up) {
@@ -188,6 +180,23 @@ void setToolUp(bool up) {
         tool.write(target);
         delay(TOOL_WAIT_MS); // delay to give the servo time to get there
     }
+}
+
+void printCurrentPos() {
+    coord_t x, y;
+    getPosition(x, y);
+    Serial.print("// X:");
+    Serial.print(x);
+    Serial.print(" Y:");
+    Serial.print(y);
+    Serial.print(" Z:");
+    Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
+    long l = left.currentPosition(); // length of left cord
+    long r = right.currentPosition(); // length of right cord
+    Serial.print("// L:");
+    Serial.print(l);
+    Serial.print(" R:");
+    Serial.println(r);
 }
 
 void setup() {
@@ -285,20 +294,7 @@ void loop() {
     } else if (type[0] == 'M') {
         long code = strtol(&type[1], nullptr, 10);
         if (code == 118) {
-            coord_t x, y;
-            getPosition(x, y);
-            Serial.print("// X:");
-            Serial.print(x);
-            Serial.print(" Y:");
-            Serial.print(y);
-            Serial.print(" Z:");
-            Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
-            long l = left.currentPosition(); // length of left cord
-            long r = right.currentPosition(); // length of right cord
-            Serial.print("// L:");
-            Serial.print(l);
-            Serial.print(" R:");
-            Serial.println(r);
+            printCurrentPos();
         } else if (code == 18) {
             leftStepper->release();
             rightStepper->release();
