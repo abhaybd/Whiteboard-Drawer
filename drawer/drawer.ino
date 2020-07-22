@@ -295,6 +295,15 @@ void loop() {
         long code = strtol(&type[1], nullptr, 10);
         if (code == 118) {
             printCurrentPos();
+            coord_t x, y;
+            getPosition(x, y);
+            Serial.print("ok X:");
+            Serial.print(x);
+            Serial.print(" Y:");
+            Serial.print(y);
+            Serial.print(" Z:");
+            Serial.println(toolPos == TOOL_UP_POS ? 1 : -1);
+            return;
         } else if (code == 18) {
             leftStepper->release();
             rightStepper->release();
