@@ -11,11 +11,12 @@ import java.util.Enumeration;
 import javax.swing.*;
 import purejavacomm.CommPortIdentifier;
 import purejavacomm.SerialPort;
+import purejavacomm.SerialPortEvent;
 
 public class App {
     public static void main(String[] args) {
-        App a = new App();
-        a.start();
+        App app = new App();
+        app.start();
     }
 
     private static final String DEF_PORT_ITEM = "Select Port";
@@ -37,6 +38,7 @@ public class App {
     private BufferedReader in;
     private PrintStream out;
     private File gcodeFile;
+    private volatile boolean ignoreSerialEvent = false;
 
     public App() {
         frame = new JFrame("CNC Whiteboard");
@@ -59,6 +61,8 @@ public class App {
         resetButton.addActionListener(this::onReset);
         selectFileButton.addActionListener(this::onChooseFile);
         startButton.addActionListener(this::onDrawFile);
+
+        setInputEnabled(false);
     }
 
     public void start() {
@@ -76,6 +80,7 @@ public class App {
                     serialPort = null;
                 }
             }
+            return;
         }
         try {
             SerialPort serialPort = (SerialPort) CommPortIdentifier.getPortIdentifier(port).open("Drawer", 1000);
@@ -84,12 +89,16 @@ public class App {
                     SerialPort.PARITY_NONE);
             synchronized (serialLock) {
                 if (this.serialPort != null) {
-                    serialPort.close();
+                    this.serialPort.removeEventListener();
+                    this.serialPort.close();
                 }
                 this.serialPort = serialPort;
                 in = new BufferedReader(new InputStreamReader(serialPort.getInputStream()));
                 out = new PrintStream(serialPort.getOutputStream());
             }
+            setInputEnabled(true);
+            serialPort.addEventListener(this::serialEvent);
+            serialPort.notifyOnDataAvailable(true);
         } catch (Exception ex) {
             ex.printStackTrace();
             showError("There was an error connecting to " + port);
@@ -104,7 +113,7 @@ public class App {
             File file = chooser.getSelectedFile();
             if (file.isFile()) {
                 gcodeFile = file;
-                selectedFileLabel.setText(String.format("<html>Selected file:<br>%s</html", file.getName()));
+                selectedFileLabel.setText(String.format("<html>Selected file:<br>%s</html>", file.getName()));
             } else {
                 showError("Error selecting file!");
             }
@@ -115,14 +124,13 @@ public class App {
         outputArea.setText("");
         synchronized (serialLock) {
             if (serialPort != null) {
-                boolean dtr = serialPort.isDTR();
-                serialPort.setDTR(!dtr);
+                serialPort.setDTR(true);
                 try {
                     Thread.sleep(30);
                 } catch (InterruptedException ex) {
                     ex.printStackTrace();
                 }
-                serialPort.setDTR(dtr);
+                serialPort.setDTR(false);
             }
         }
     }
@@ -133,9 +141,7 @@ public class App {
             return;
         }
 
-        inputField.setEnabled(false);
-        submitButton.setEnabled(false);
-        startButton.setEnabled(false);
+        setInputEnabled(false);
         new Thread(() -> {
             synchronized (serialLock) {
                 if (serialPort != null) {
@@ -154,55 +160,49 @@ public class App {
                     }
                 }
             }
-            SwingUtilities.invokeLater(() -> {
-                inputField.setEnabled(true);
-                submitButton.setEnabled(true);
-                startButton.setEnabled(true);
-            });
+            SwingUtilities.invokeLater(() -> setInputEnabled(true));
         }).start();
+    }
 
-
+    private void setInputEnabled(boolean enabled) {
+        startButton.setEnabled(enabled);
+        inputField.setEnabled(enabled);
+        submitButton.setEnabled(enabled);
     }
 
     private void onSubmit(ActionEvent e) {
-        startButton.setEnabled(false);
-        inputField.setEnabled(false);
-        startButton.setEnabled(false);
+        setInputEnabled(false);
         new Thread(() -> {
-            try {
-                sendCommand(inputField.getText());
-            } catch (IOException ex) {
-                showError("An error occurred!");
-            }
+            sendCommand(inputField.getText());
             updatePosition();
-            SwingUtilities.invokeLater(() -> {
-                inputField.setEnabled(true);
-                submitButton.setEnabled(true);
-                startButton.setEnabled(true);
-            });
+            SwingUtilities.invokeLater(() -> setInputEnabled(true));
         }).start();
     }
 
-    private void sendCommand(String c) throws IOException {
+    private void sendCommand(String c) {
         synchronized (serialLock) {
             if (serialPort != null) {
                 final String command = sanitize(c);
                 inputField.setText("");
                 if (command.length() > 0) {
-                    String response;
-                    do {
-                        SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + ">>> " + command + "\n"));
-                        System.out.println(">>> " + command);
-                        out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
-                        out.flush();
-                        do {
-                            response = in.readLine();
-                            final String r = response;
-                            System.out.println("<<< " + response);
-                            SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + "<<< " + r + "\n"));
-                        } while (response.startsWith("//")); // skip past debug info
-                    } while (response.equals("rs"));
+                    SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + ">>> " + command + "\n"));
+                    System.out.println(">>> " + command);
+                    out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
+                    out.flush();
                 }
+            }
+        }
+    }
+
+    private void serialEvent(SerialPortEvent event) {
+        if (!ignoreSerialEvent && event.getEventType() == SerialPortEvent.DATA_AVAILABLE) {
+            try {
+                String response = in.readLine();
+                System.out.println("<<< " + response);
+                SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + "<<< " + response + "\n"));
+            } catch (IOException e) {
+                e.printStackTrace();
+                showError("An unexpected error occurred!");
             }
         }
     }
@@ -240,6 +240,7 @@ public class App {
         synchronized (serialLock) {
             if (serialPort != null) {
                 try {
+                    ignoreSerialEvent = true;
                     out.print("M118\n");
                     out.flush();
                     String response;
@@ -274,6 +275,8 @@ public class App {
                         positionLabel.setText("Current Position: N/A");
                         showError("Error communicating with machine!");
                     });
+                } finally {
+                    ignoreSerialEvent = false;
                 }
             } else {
                 positionLabel.setText("Current Position: N/A");
