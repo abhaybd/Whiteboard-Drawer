@@ -63,11 +63,22 @@ public class App {
         startButton.addActionListener(this::onDrawFile);
 
         setInputEnabled(false);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
 
     public void start() {
         frame.pack();
         frame.setVisible(true);
+    }
+
+    public void close() {
+        synchronized (serialLock) {
+            if (serialPort != null) {
+                serialPort.removeEventListener();
+                serialPort.close();
+            }
+        }
     }
 
     private void onPortSelected(ActionEvent e) {
@@ -97,8 +108,8 @@ public class App {
                 out = new PrintStream(serialPort.getOutputStream());
             }
             setInputEnabled(true);
-            serialPort.addEventListener(this::serialEvent);
-            serialPort.notifyOnDataAvailable(true);
+//            serialPort.addEventListener(this::serialEvent);
+//            serialPort.notifyOnDataAvailable(true);
         } catch (Exception ex) {
             ex.printStackTrace();
             showError("There was an error connecting to " + port);
@@ -176,7 +187,10 @@ public class App {
             try {
                 sendCommand(inputField.getText());
                 updatePosition();
-                SwingUtilities.invokeLater(() -> setInputEnabled(true));
+                SwingUtilities.invokeLater(() -> {
+                    setInputEnabled(true);
+                    inputField.requestFocusInWindow();
+                });
             } catch (IOException ex) {
                 ex.printStackTrace();
                 showError("An unexpected error occurred!");

@@ -234,8 +234,6 @@ void loop() {
     char command[commandLen] = {};
     size_t len = Serial.readBytesUntil('\n', command, commandLen - 1);
     command[len] = '\0'; // make sure string is null terminated
-    Serial.print("// Recieved command: ");
-    Serial.println(command);
 
     // Tokenize into space delimited parts
     char* parts[numParts] = {};
