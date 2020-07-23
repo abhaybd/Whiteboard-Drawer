@@ -20,7 +20,7 @@ const float TICKS_PER_MM = TICKS_PER_ROT / (2 * PI * SPOOL_RAD);
 
 // All of these in mm
 const coord_t LEFT_X = 0;
-const coord_t LEFT_Y = 400;//953;
+const coord_t LEFT_Y = 450;//953;
 const coord_t RIGHT_X = 660;
 const coord_t RIGHT_Y = LEFT_Y;
 
