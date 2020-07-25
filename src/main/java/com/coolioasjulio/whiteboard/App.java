@@ -5,9 +5,18 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Enumeration;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.function.Consumer;
 import javax.swing.*;
 import purejavacomm.CommPortIdentifier;
 import purejavacomm.SerialPort;
@@ -35,10 +44,9 @@ public class App {
 
     private final Object serialLock = new Object();
     private SerialPort serialPort;
-    private BufferedReader in;
+    private InputConsumer input;
     private PrintStream out;
     private File gcodeFile;
-    private volatile boolean ignoreSerialEvent = false;
 
     public App() {
         frame = new JFrame("CNC Whiteboard");
@@ -104,12 +112,10 @@ public class App {
                     this.serialPort.close();
                 }
                 this.serialPort = serialPort;
-                in = new BufferedReader(new InputStreamReader(serialPort.getInputStream()));
+                input = new InputConsumer(serialPort.getInputStream());
                 out = new PrintStream(serialPort.getOutputStream());
             }
             setInputEnabled(true);
-//            serialPort.addEventListener(this::serialEvent);
-//            serialPort.notifyOnDataAvailable(true);
         } catch (Exception ex) {
             ex.printStackTrace();
             showError("There was an error connecting to " + port);
@@ -167,7 +173,7 @@ public class App {
                         }
                     } catch (IOException ex) {
                         ex.printStackTrace();
-                        SwingUtilities.invokeLater(() -> showError("An unexpected error occurred!"));
+                        showError("An unexpected error occurred!");
                     }
                 }
             }
@@ -184,64 +190,56 @@ public class App {
     private void onSubmit(ActionEvent e) {
         setInputEnabled(false);
         new Thread(() -> {
-            try {
-                sendCommand(inputField.getText());
-                updatePosition();
-                SwingUtilities.invokeLater(() -> {
-                    setInputEnabled(true);
-                    inputField.requestFocusInWindow();
-                });
-            } catch (IOException ex) {
-                ex.printStackTrace();
-                showError("An unexpected error occurred!");
-            }
+            sendCommand(inputField.getText());
+            updatePosition();
+            SwingUtilities.invokeLater(() -> {
+                setInputEnabled(true);
+                inputField.requestFocusInWindow();
+            });
         }).start();
     }
 
-    private void sendCommand(String c) throws IOException {
+    private void sendCommand(String c) {
         synchronized (serialLock) {
             if (serialPort != null) {
                 final String command = sanitize(c);
                 inputField.setText("");
                 if (command.length() > 0) {
+                    addLine(">>> " + command);
+                    // Register input with the input consumer. This needs to happen BEFORE sending the output.
+                    // That way, as soon as the response comes it knows to send the input back here.
+                    Future<String> future = input.getResponse(false);
+                    out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
+                    out.flush();
                     try {
-                        ignoreSerialEvent = true;
-                        String response;
-                        do {
-                            SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + ">>> " + command + "\n"));
-                            System.out.println(">>> " + command);
-                            out.print(command + "\n"); // don't use println, since that uses windows line endings (\r\n instead of \n)
-                            out.flush();
-                            do {
-                                response = in.readLine();
-                                final String r = response;
-                                System.out.println("<<< " + response);
-                                SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + "<<< " + r + "\n"));
-                            } while (response.startsWith("//")); // skip past debug info
-                        } while (response.equals("rs"));
-                    } finally {
-                        ignoreSerialEvent = false;
+                        future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        e.printStackTrace();
                     }
                 }
             }
         }
     }
 
-    private void serialEvent(SerialPortEvent event) {
-        if (!ignoreSerialEvent && event.getEventType() == SerialPortEvent.DATA_AVAILABLE) {
+    private void runOnEDT(Runnable r) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
             try {
-                String response = in.readLine();
-                System.out.println("<<< " + response);
-                SwingUtilities.invokeLater(() -> outputArea.setText(outputArea.getText() + "<<< " + response + "\n"));
-            } catch (IOException e) {
+                SwingUtilities.invokeAndWait(r);
+            } catch (InterruptedException | InvocationTargetException e) {
                 e.printStackTrace();
-                showError("An unexpected error occurred!");
             }
         }
     }
 
+    private void addLine(String line) {
+        System.out.println(line);
+        runOnEDT(() -> outputArea.setText(outputArea.getText() + line + "\n"));
+    }
+
     private void showError(String message) {
-        JOptionPane.showMessageDialog(root, message, "Error!", JOptionPane.ERROR_MESSAGE);
+        runOnEDT(() -> JOptionPane.showMessageDialog(root, message, "Error!", JOptionPane.ERROR_MESSAGE));
     }
 
     private String sanitize(String command) {
@@ -273,47 +271,95 @@ public class App {
         synchronized (serialLock) {
             if (serialPort != null) {
                 try {
-                    ignoreSerialEvent = true;
+                    Future<String> future = input.getResponse(true);
                     out.print("M118\n");
                     out.flush();
-                    String response;
-                    do {
-                        response = in.readLine();
-                        if (response == null) {
-                            SwingUtilities.invokeLater(() -> {
-                                positionLabel.setText("Current Position: N/A");
-                                showError("Lost connection unexpectedly!");
-                            });
+                    String response = future.get();
+                    if (response == null) {
+                        SwingUtilities.invokeLater(() -> {
+                            positionLabel.setText("Current Position: N/A");
+                            showError("Lost connection unexpectedly!");
+                        });
+                    } else {
+                        String[] parts = response.split(" "); // response in form "ok X:123 Y:123 Z:123"
+                        try {
+                            double x = parse(parts[1].substring(2));
+                            double y = parse(parts[2].substring(2));
+                            double z = parse(parts[3].substring(2));
 
-                            return;
+                            System.out.printf("Pos - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
+                            SwingUtilities.invokeLater(() ->
+                                    positionLabel.setText(
+                                            String.format("<html>Current Position:<br>X: %.3f<br>Y: %.3f<br>Z: %.3f</html>", x, y, z)));
+                        } catch (NumberFormatException e) {
+                            e.printStackTrace(); // don't crash for a malformed response, but still report it
                         }
-                    } while (!response.startsWith("ok"));
-
-                    String[] parts = response.split(" "); // response in form "ok X:123 Y:123 Z:123"
-                    try {
-                        double x = parse(parts[1].substring(2));
-                        double y = parse(parts[2].substring(2));
-                        double z = parse(parts[3].substring(2));
-
-                        System.out.printf("Pos - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
-                        SwingUtilities.invokeLater(() ->
-                                positionLabel.setText(
-                                        String.format("<html>Current Position:<br>X: %.3f<br>Y: %.3f<br>Z: %.3f</html>", x, y, z)));
-                    } catch (NumberFormatException e) {
-                        e.printStackTrace(); // don't crash for a malformed response, but still report it
                     }
-                } catch (IOException e) {
+                } catch (InterruptedException | ExecutionException e) {
                     e.printStackTrace();
                     SwingUtilities.invokeLater(() -> {
                         positionLabel.setText("Current Position: N/A");
                         showError("Error communicating with machine!");
                     });
-                } finally {
-                    ignoreSerialEvent = false;
                 }
             } else {
                 positionLabel.setText("Current Position: N/A");
             }
         }
     }
+
+    private class InputConsumer {
+        private BufferedReader in;
+        private BlockingQueue<InputTask> queue;
+        public InputConsumer(InputStream in) {
+            queue = new LinkedBlockingQueue<>();
+            this.in = new BufferedReader(new InputStreamReader(in));
+            Thread inputThread = new Thread(this::inputTask);
+            inputThread.start();
+        }
+
+        private void inputTask() {
+            InputTask activeTask = null;
+            try {
+                String response;
+                while ((response = in.readLine()) != null) {
+                    if (activeTask == null) activeTask = queue.poll();
+
+                    if (activeTask == null || !activeTask.silent) {
+                        addLine("<<< " + response);
+                    }
+
+                    if (activeTask != null && response.startsWith("ok")) {
+                        activeTask.callback.accept(response);
+                        activeTask = null;
+                    }
+                }
+            } catch (IOException e) {
+                // ignored
+            } finally {
+                if (activeTask != null) {
+                    activeTask.callback.accept(null);
+                }
+                for (InputTask task : queue) {
+                    task.callback.accept(null);
+                }
+            }
+        }
+
+        public Future<String> getResponse(boolean silent) {
+            CompletableFuture<String> future = new CompletableFuture<>();
+            InputTask task = new InputTask();
+            task.silent = silent;
+            task.callback = future::complete;
+            queue.add(task);
+            return future;
+        }
+
+        private class InputTask {
+            private Consumer<String> callback;
+            private boolean silent;
+        }
+    }
+
+
 }
